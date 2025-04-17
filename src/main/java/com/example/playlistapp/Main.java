@@ -295,13 +295,8 @@ public class Main {
     private static void handleDeleteConfirmation(int choice) throws Exception {
         if (choice > 0 && choice <= userPlaylists.size()) {
             UserPlaylistDTO selectedPlaylist = userPlaylists.get(choice - 1);
-            String spotifyPlaylistId = selectedPlaylist.getSpotifyPlaylistId();
             Long playlistId = selectedPlaylist.getId();
             String name = selectedPlaylist.getName();
-            System.out.println("----------------------------------------------------------------------------");
-            System.out.println("Playlist ID: " + playlistId);
-            System.out.println("Spotify Playlist ID: " + spotifyPlaylistId);
-            System.out.println("---------------------------------------------------------------------------");
             System.out.println("Are you sure you want to delete " + name + "? (yes/no)");
             Scanner scanner = new Scanner(System.in);
             String confirmation = scanner.nextLine();
@@ -389,6 +384,10 @@ public class Main {
             System.out.println("Getting your playlists...");
             Thread.sleep(1000);
             getUsersSavedPlaylists();
+            if (userPlaylists.isEmpty()) {
+                System.out.println("You have no playlists saved.");
+                break; 
+            }    
             System.out.println("Which playlist would you like to see their tracks?");
             int choice = scanner.nextInt();
             scanner.nextLine();
