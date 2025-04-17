@@ -1,3 +1,4 @@
+package com.example.playlistapp;
 
 import java.net.URI;
 import java.net.http.*;
@@ -10,12 +11,15 @@ import java.util.Scanner;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import com.example.playlistapp.dtos.UserPlaylistDTO;
+
 public class Main {
     private static final HttpClient client = HttpClient.newHttpClient();
     private static final String BASE_URL = "http://localhost:8080/api";
     private static String jwtToken = null;
+    private static String username = null;
     private static List<Map<String, String>> spotifyPlaylists = new ArrayList<>();
-    private static List<Map<String, String>> userPlaylists = new ArrayList<>();
+    private static List<UserPlaylistDTO> userPlaylists = new ArrayList<>();
     private static List<Map<String, String>> playlistTracks = new ArrayList<>();
 
     private static void printHeader() {
@@ -125,7 +129,6 @@ public class Main {
     }
 
     private static void getUsersSavedPlaylists() throws Exception {
-
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(new URI(BASE_URL + "/playlists"))
                 .header("Content-Type", "application/json")
@@ -135,23 +138,27 @@ public class Main {
 
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() == 200) {
-        JSONArray jsonResponse = new JSONArray(response.body());
-        userPlaylists.clear();
-        for (int i = 0; i < jsonResponse.length(); i++) {
-            JSONObject item = jsonResponse.getJSONObject(i);
-            Map<String, String> playlist = new HashMap<>();
-            playlist.put("spotifyPlaylistId", item.getString("spotifyPlaylistId"));
-            playlist.put("name", item.getString("name"));
-            userPlaylists.add(playlist);
-        }
+            JSONArray jsonResponse = new JSONArray(response.body());
+            userPlaylists.clear();
 
-        for (int i = 0; i < userPlaylists.size(); i++) {
-            System.out.println("----------------------------------------------------------------------------");
-            System.out.println((i + 1) + ". " + userPlaylists.get(i).get("name"));
+            for (int i = 0; i < jsonResponse.length(); i++) {
+                JSONObject item = jsonResponse.getJSONObject(i);
+                String spotifyPlaylistId = item.getString("spotifyPlaylistId");
+                Long id = item.getLong("id");
+                String name = item.getString("name");
+
+                userPlaylists.add(new UserPlaylistDTO(spotifyPlaylistId, id, name));
+            }
+
+            System.out.println("----------------------------------" + username + "'s"
+                    + " playlist------------------------------------------");
+            for (int i = 0; i < userPlaylists.size(); i++) {
+                System.out.println((i + 1) + ". " + userPlaylists.get(i));
+                System.out.println("----------------------------------------------------------------------------");
+            }
+        } else {
+            System.out.println("Failed to retrieve playlists: " + response.body());
         }
-    } else {
-        System.out.println("Failed to retrieve playlists: " + response.body());
-    }
     }
 
     private static void getSpotifyPlaylists() throws Exception {
@@ -214,6 +221,25 @@ public class Main {
         }
     }
 
+    private static void deletePlaylist(Long playlistId) throws Exception {
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(new URI(BASE_URL + "/playlists/" + playlistId))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + jwtToken)
+                .DELETE()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() == 204) {
+            System.out.println("----------------------------------------------------------------------------");
+            System.out.println("Playlist deleted successfully ✅");
+            System.out.println("----------------------------------------------------------------------------");
+        } else {
+            System.out.println("Failed to remove playlist: " + response.body());
+        }
+    }
+
     private static void addSpotifyPlaylistToLibrary(String playlistId, String playlistName) throws Exception {
         String json = String.format("{\"name\": \"%s\", \"spotifyPlaylistId\": \"%s\"}", playlistName, playlistId);
         HttpRequest request = HttpRequest.newBuilder()
@@ -258,13 +284,35 @@ public class Main {
 
     private static void handleGetPlaylistTracklist(int choice) throws Exception {
         if (choice > 0 && choice <= userPlaylists.size()) {
-            Map<String, String> selectedPlaylist = userPlaylists.get(choice - 1);
-            String playlistId = selectedPlaylist.get("spotifyPlaylistId");
+            UserPlaylistDTO selectedPlaylist = userPlaylists.get(choice - 1);
+            String playlistId = selectedPlaylist.getSpotifyPlaylistId();
             getPlaylistTracks(playlistId);
         } else {
             System.out.println("❌ Invalid choice. Please select a valid playlist number.");
         }
+    }
 
+    private static void handleDeleteConfirmation(int choice) throws Exception {
+        if (choice > 0 && choice <= userPlaylists.size()) {
+            UserPlaylistDTO selectedPlaylist = userPlaylists.get(choice - 1);
+            String spotifyPlaylistId = selectedPlaylist.getSpotifyPlaylistId();
+            Long playlistId = selectedPlaylist.getId();
+            String name = selectedPlaylist.getName();
+            System.out.println("----------------------------------------------------------------------------");
+            System.out.println("Playlist ID: " + playlistId);
+            System.out.println("Spotify Playlist ID: " + spotifyPlaylistId);
+            System.out.println("---------------------------------------------------------------------------");
+            System.out.println("Are you sure you want to delete " + name + "? (yes/no)");
+            Scanner scanner = new Scanner(System.in);
+            String confirmation = scanner.nextLine();
+            if (confirmation.equalsIgnoreCase("yes")) {
+                deletePlaylist(playlistId);
+            } else {
+                System.out.println("Deletion cancelled.");
+            }
+        } else {
+            System.out.println("❌ Invalid choice. Please select a valid playlist number.");
+        }
     }
 
     private static void addPlaylistsLoop(Scanner scanner) throws Exception {
@@ -272,18 +320,42 @@ public class Main {
 
         while (stillAdding) {
             System.out.println("Retrieving Spotify's playlists...");
-            Thread.sleep(2000);
+            Thread.sleep(1000);
             getSpotifyPlaylists();
-            System.out.println("----------------------------------------------------------------------------");
-            System.out.println("Which playlist would you like to add to your library? (number)");
-            int choice = scanner.nextInt();
-            scanner.nextLine();
+
+            int choice = -1;
+            while (true) {
+                System.out.println("Which playlist would you like to add to your library? (number)");
+                if (scanner.hasNextInt()) {
+                    choice = scanner.nextInt();
+                    scanner.nextLine();
+                    if (choice >= 1 && choice <= spotifyPlaylists.size()) {
+                        break;
+                    } else {
+                        System.out.println("❌ Invalid choice. Please select a valid playlist number between 1 and "
+                                + spotifyPlaylists.size() + ".");
+                    }
+                } else {
+                    System.out.println("❌ Invalid input. Please enter a number.");
+                    scanner.nextLine();
+                }
+            }
+
             handleAddPlaylistChoice(choice);
             System.out.println();
-            System.out.println("Would you like to add another playlist? (yes/no)");
-            String addAnother = scanner.nextLine();
 
-            if (addAnother.equalsIgnoreCase("no")) {
+            String addAnother = "";
+            while (true) {
+                System.out.println("Would you like to add another playlist? (yes/no)");
+                addAnother = scanner.nextLine().trim().toLowerCase();
+                if (addAnother.equals("yes") || addAnother.equals("no")) {
+                    break;
+                } else {
+                    System.out.println("❌ Invalid input. Please type 'yes' or 'no'.");
+                }
+            }
+
+            if (addAnother.equals("no")) {
                 stillAdding = false;
             }
         }
@@ -294,19 +366,18 @@ public class Main {
 
         while (managingPlaylists) {
             System.out.println("Getting your playlists...");
-            Thread.sleep(2000);
-            getSpotifyPlaylists(); 
-            System.out.println("----------------------------------------------------------------------------");
-            System.out.println("Which playlist would you like to delete from your library?");
+            Thread.sleep(1000);
+            getUsersSavedPlaylists();
+            System.out.println("Which playlist would you like to delete from your library? (number)");
             int choice = scanner.nextInt();
             scanner.nextLine();
-            // deletePlaylist(choice); 
+            handleDeleteConfirmation(choice);
             System.out.println();
             System.out.println("Would you like to delete another playlist? (yes/no)");
             String deleteAnother = scanner.nextLine();
 
             if (deleteAnother.equalsIgnoreCase("no")) {
-                managingPlaylists = false; 
+                managingPlaylists = false;
             }
         }
     }
@@ -316,20 +387,30 @@ public class Main {
 
         while (getPlaylist) {
             System.out.println("Getting your playlists...");
-            Thread.sleep(2000);
+            Thread.sleep(1000);
             getUsersSavedPlaylists();
-            System.out.println("----------------------------------------------------------------------------");
             System.out.println("Which playlist would you like to see their tracks?");
             int choice = scanner.nextInt();
             scanner.nextLine();
-            handleGetPlaylistTracklist(choice); 
+            handleGetPlaylistTracklist(choice);
             System.out.println("œœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœœ");
             System.out.println();
             System.out.println("Would you like to see another playlist? (yes/no)");
             String seeAnother = scanner.nextLine();
 
             if (seeAnother.equalsIgnoreCase("no")) {
-                getPlaylist = false; 
+                getPlaylist = false;
+            }
+        }
+    }
+
+    private static String requireInput(Scanner scanner, String prompt) {
+        while (true) {
+            prompt = scanner.nextLine().trim();
+            if (!prompt.isEmpty()) {
+                return prompt;
+            } else {
+                System.out.println("❌ Prompt cannot be empty. Please enter a valid response:");
             }
         }
     }
@@ -342,10 +423,25 @@ public class Main {
         System.out.println("🎵 Welcome to the Playlist Console Client!🎵");
         System.out.println("[1] Select 1 to register your account!");
         System.out.print("Choose an option: ");
+        int option = -1;
 
-        int option = scanner.nextInt();
-        scanner.nextLine();
+        while (true) {
+            if (scanner.hasNextInt()) {
+                option = scanner.nextInt();
+                scanner.nextLine();
 
+                if (option == 1) {
+                    break;
+                } else {
+                    System.out.println("❌ Invalid option. Please enter 1 to register your account.");
+                    System.out.print("Choose an option: ");
+                }
+            } else {
+                System.out.println("❌ Invalid input. Please enter a number.");
+                scanner.nextLine();
+                System.out.print("Choose an option: ");
+            }
+        }
         switch (option) {
             case 1:
                 System.out.print("Enter username: ");
@@ -354,20 +450,21 @@ public class Main {
                 System.out.println("❌ Invalid option.");
         }
 
-        String username = scanner.nextLine();
+        username = requireInput(scanner, username);
         System.out.println("----------------------------------------------------------------------------");
         System.out.println("Welcome, " + username + "!");
         System.out.println("----------------------------------------------------------------------------");
         System.out.println("Enter your password: ");
-        String password = scanner.nextLine();
+        String password = null;
+        password = requireInput(scanner, password);
         System.out.println("Password entered: " + password);
         System.out.println("----------------------------------------------------------------------------");
         System.out.println("Registering...");
-        Thread.sleep(2000);
+        Thread.sleep(1000);
         register(username, password);
         Thread.sleep(1000);
         System.out.println("Attempting to login...");
-        Thread.sleep(2000);
+        Thread.sleep(1000);
         login(username, password);
         Thread.sleep(1000);
 
@@ -381,18 +478,43 @@ public class Main {
         while (stillAdding) {
             System.out.println("Retrieving Spotify's playlists...");
             System.out.println();
-            Thread.sleep(2000);
+            Thread.sleep(1000);
             getSpotifyPlaylists();
             System.out.println();
-            System.out.println("Which playlist would you like to add to your library? (number)");
-            int choice = scanner.nextInt();
-            scanner.nextLine();
+
+            int choice = -1;
+            while (true) {
+                System.out.println("Which playlist would you like to add to your library? (number)");
+                if (scanner.hasNextInt()) {
+                    choice = scanner.nextInt();
+                    scanner.nextLine();
+                    if (choice >= 1 && choice <= spotifyPlaylists.size()) {
+                        break;
+                    } else {
+                        System.out.println("❌ Invalid choice. Please select a valid playlist number between 1 and "
+                                + spotifyPlaylists.size() + ".");
+                    }
+                } else {
+                    System.out.println("❌ Invalid input. Please enter a number.");
+                    scanner.nextLine();
+                }
+            }
+
             handleAddPlaylistChoice(choice);
+            System.out.println();
 
-            System.out.println("Would you like to add another playlist? (yes/no)");
-            String addAnother = scanner.nextLine();
+            String addAnother = "";
+            while (true) {
+                System.out.println("Would you like to add another playlist? (yes/no)");
+                addAnother = scanner.nextLine().trim().toLowerCase();
+                if (addAnother.equals("yes") || addAnother.equals("no")) {
+                    break;
+                } else {
+                    System.out.println("❌ Invalid input. Please type 'yes' or 'no'.");
+                }
+            }
 
-            if (addAnother.equalsIgnoreCase("no")) {
+            if (addAnother.equals("no")) {
                 stillAdding = false;
             }
         }
