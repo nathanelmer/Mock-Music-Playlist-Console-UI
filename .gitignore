@@ -1,0 +1,11 @@
+# Ignore compiled class files
+*.class
+
+# Ignore build directories
+target/
+bin/
+
+# Ignore IDE-specific files
+*.iml
+.idea/
+.vscode/
