@@ -12,7 +12,8 @@
 
 Welcome to the **Playlist App Console UI**! 🎵  
 A sleek, console-based application to manage your music playlists with ease.
-
+This app integrates with Spotify's API to allow users to copy over existing playlists over to their account on the *Playlist App*
+You can retrieve spotify playlists, add them to your account, view track details, and remove them from your account. 
 ---
 
 ## 🚀 **Getting Started**
@@ -24,21 +25,20 @@ cd Mock-Music-Playlist-Console-UI
 ```
 
 ### ➤ **Navigate to the Source Directory**
-```bash
-cd src
-```
 
 ### ➤ **Run the Application**
+*Make sure you have cloned the api and run it first*
+
 Compile and execute the application.
+Follow the prompts and enjoy!
 ```
 
 ---
 
 ## 🛠 **Features**
 ```plaintext
-[+] Create, edit, and delete playlists.
-[+] Add or remove songs from playlists.
-[+] View all playlists and their contents.
+[+] Add and delete playlists.
+[+] View songs from playlists.
 ```
 
 ---
